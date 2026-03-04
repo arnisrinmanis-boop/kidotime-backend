@@ -120,6 +120,19 @@ def check_registration(token: str, key=Depends(verify_key)):
     conn.commit(); conn.close()
     return {"registered": bool(pc["registered"]), "pc_id": pc["id"]}
 
+@app.post("/api/pcs/{token}/heartbeat")
+def pc_heartbeat(token: str, key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.now().isoformat(), token))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.post("/api/pcs/{token}/offline")
+def pc_offline(token: str, key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE pcs SET active_kid_id=NULL, last_seen=%s WHERE token=%s",
+              (datetime.now().isoformat(), token))
+    conn.commit(); conn.close(); return {"ok": True}
+
 @app.post("/api/pcs/{token}/active-kid")
 def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
     kid_id = body.get("kid_id")  # None = parent session / no active kid
@@ -135,8 +148,10 @@ def get_kids(key=Depends(verify_key)):
     c.execute("SELECT * FROM kids")
     kids = rows_to_dicts(c.fetchall(), c)
     result = []
-    # Get active kid IDs from all PCs
-    c.execute("SELECT active_kid_id FROM pcs WHERE active_kid_id IS NOT NULL")
+    # Get active kid IDs only from PCs seen in last 2 minutes (online check)
+    from datetime import datetime, timedelta
+    cutoff = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
+    c.execute("SELECT active_kid_id FROM pcs WHERE active_kid_id IS NOT NULL AND last_seen > %s", (cutoff,))
     active_ids = {row[0] for row in c.fetchall()}
 
     for kid in kids:
