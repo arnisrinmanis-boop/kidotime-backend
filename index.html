@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>KidoTime</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KidoTime">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+:root {
+  --bg:#0d0f14; --surface:#161a22; --surface2:#1e2330;
+  --border:#2a3040; --accent:#5fffb0; --accent2:#ff6b6b;
+  --accent3:#ffd166; --text:#e8eaf0; --muted:#6b7490;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);max-width:420px;margin:0 auto;min-height:100vh;overflow-x:hidden}
+header{padding:20px 20px 0;display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:20px;font-weight:800;letter-spacing:-0.5px}
+.logo span{color:var(--accent)}
+.status-dot{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+nav{display:flex;margin:16px 20px 0;background:var(--surface);border-radius:12px;padding:4px;gap:2px}
+nav button{flex:1;padding:8px 0;border:none;border-radius:9px;background:transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s}
+nav button.active{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+main{padding:16px 20px}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.section-title{font-size:11px;font-weight:600;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.device-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.device-info{display:flex;align-items:center;gap:12px}
+.device-icon{width:42px;height:42px;background:var(--surface2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.device-name{font-weight:700;font-size:15px;margin-bottom:2px}
+.device-meta{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)}
+.lock-btn{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;border:1.5px solid;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .25s}
+.lock-btn.unlocked{border-color:var(--accent);color:var(--accent);background:rgba(95,255,176,.07)}
+.lock-btn.locked{border-color:var(--accent2);color:var(--accent2);background:rgba(255,107,107,.07)}
+.lock-btn:active{transform:scale(.96)}
+.bar-wrap{margin-bottom:8px}
+.bar-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+.bar-label span:last-child{font-family:'DM Mono',monospace;color:var(--text)}
+.bar-track{height:6px;background:var(--surface2);border-radius:99px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;transition:width .6s ease}
+.bar-fill.green{background:var(--accent)}.bar-fill.orange{background:var(--accent3)}.bar-fill.red{background:var(--accent2)}
+.stats-row{display:flex;gap:8px;margin-top:12px}
+.stat-chip{flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center}
+.stat-value{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--accent)}
+.stat-label{font-size:10px;color:var(--muted);margin-top:2px}
+.add-btn{width:100%;padding:14px;background:transparent;border:1.5px dashed var(--border);border-radius:16px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:600;font-size:13px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px}
+.add-btn:hover{border-color:var(--accent);color:var(--accent)}
+.save-btn{width:100%;margin-top:10px;padding:12px;background:var(--accent);color:var(--bg);border:none;border-radius:12px;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .2s,transform .15s}
+.save-btn:hover{opacity:.9}.save-btn:active{transform:scale(.98)}
+.toggle{width:44px;height:24px;background:var(--border);border-radius:99px;position:relative;cursor:pointer;transition:background .2s}
+.toggle.on{background:var(--accent)}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;background:white;border-radius:50%;transition:transform .2s}
+.toggle.on::after{transform:translateX(20px)}
+.day-btn{flex:1;text-align:center;padding:6px 0;border-radius:8px;font-size:11px;font-weight:700;background:var(--surface2);color:var(--muted);cursor:pointer;transition:.15s}
+.day-btn.on{border:1.5px solid var(--accent);color:var(--accent);background:rgba(95,255,176,.08)}
+.activity-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.activity-item:last-child{border-bottom:none}
+.activity-icon{width:36px;height:36px;border-radius:9px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.activity-text{flex:1}
+.activity-name{font-size:13px;font-weight:600}
+.activity-time{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:1px}
+.activity-dur{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);background:var(--surface2);padding:4px 8px;border-radius:6px}
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--accent);color:var(--bg);padding:12px 24px;border-radius:99px;font-weight:700;font-size:13px;transition:transform .3s;pointer-events:none;z-index:999}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+/* ── Modal overlay ── */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:24px;width:100%;max-width:380px}
+.modal-title{font-size:18px;font-weight:800;margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+.field input,.field select{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'Syne',sans-serif;font-size:15px;padding:10px 12px;outline:none;transition:border-color .2s}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field select option{background:var(--surface2)}
+.btn-row{display:flex;gap:10px;margin-top:6px}
+.cancel-btn{flex:1;padding:12px;background:var(--surface2);color:var(--muted);border:none;border-radius:12px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+
+/* ── QR Scanner ── */
+#qr-modal .modal-box{max-width:340px;text-align:center}
+#qr-video-wrap{position:relative;width:260px;height:260px;margin:0 auto 16px;border-radius:16px;overflow:hidden;background:#000}
+#qr-video{width:100%;height:100%;object-fit:cover}
+.qr-overlay{position:absolute;inset:0;border:2px solid var(--accent);border-radius:16px;pointer-events:none}
+.qr-corners::before,.qr-corners::after{content:'';position:absolute;width:30px;height:30px;border-color:var(--accent);border-style:solid}
+.qr-corners::before{top:8px;left:8px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
+.qr-corners::after{bottom:8px;right:8px;border-width:0 3px 3px 0;border-radius:0 0 4px 0}
+#qr-status{font-size:13px;color:var(--muted);min-height:20px}
+
+/* ── PC card ── */
+.pc-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.pc-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.pc-name{font-weight:700;font-size:14px}
+.pc-meta{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace}
+
+/* ── Settings tab ── */
+.settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border)}
+.settings-row:last-child{border-bottom:none}
+.settings-label{font-weight:600;font-size:14px}
+.settings-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.danger-btn{padding:10px 18px;background:rgba(255,107,107,.1);border:1.5px solid var(--accent2);border-radius:10px;color:var(--accent2);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Kido<span>Time</span></div>
+  <div class="status-dot"><div class="dot"></div>Connected</div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('dashboard')">Dashboard</button>
+  <button onclick="switchTab('schedule')">Schedule</button>
+  <button onclick="switchTab('activity')">Activity</button>
+  <button onclick="switchTab('settings')">Settings</button>
+</nav>
+
+<main>
+
+<!-- ── DASHBOARD ── -->
+<div class="tab-panel active" id="tab-dashboard">
+  <div class="section-title" style="margin-top:4px">Your PCs</div>
+
+  <div class="pc-card">
+    <div class="pc-dot"></div>
+    <div>
+      <div class="pc-name">🖥️ Family PC</div>
+      <div class="pc-meta" id="pc-meta">Loading...</div>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:16px">Kids</div>
+
+  <div id="dashboard-kids-list">
+    <div style="color:var(--muted);font-size:13px;padding:12px 0">Loading...</div>
+  </div>
+
+  <button class="add-btn" onclick="openModal('add-kid-modal')">+ Add Child</button>
+  <button class="add-btn" onclick="openModal('qr-modal')">📷 Add PC via QR Code</button>
+</div>
+
+<!-- ── SCHEDULE ── -->
+<div class="tab-panel" id="tab-schedule">
+  <div class="section-title" style="margin-top:4px">Schedules</div>
+  <div id="schedule-kid-select" style="margin-bottom:12px"></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div><div style="font-weight:700;font-size:14px">Bedtime Block</div><div style="font-size:11px;color:var(--muted)" id="schedule-kid-label">Select a child above</div></div>
+      <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px" id="day-buttons">
+      <div class="day-btn on" onclick="this.classList.toggle('on')">Mo</div>
+      <div class="day-btn on" onclick="this.classList.toggle('on')">Tu</div>
+      <div class="day-btn on" onclick="this.classList.toggle('on')">We</div>
+      <div class="day-btn on" onclick="this.classList.toggle('on')">Th</div>
+      <div class="day-btn on" onclick="this.classList.toggle('on')">Fr</div>
+      <div class="day-btn" onclick="this.classList.toggle('on')">Sa</div>
+      <div class="day-btn" onclick="this.classList.toggle('on')">Su</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:1px">BLOCK FROM</div><input type="time" value="21:00" id="sched-from" style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:16px;padding:10px 12px;outline:none"></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:1px">UNTIL</div><input type="time" value="07:00" id="sched-until" style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:16px;padding:10px 12px;outline:none"></div>
+    </div>
+    <button class="save-btn" onclick="showToast('Schedule saved! ✅')">Save Changes</button>
+  </div>
+</div>
+
+<!-- ── ACTIVITY ── -->
+<div class="tab-panel" id="tab-activity">
+  <div class="section-title" style="margin-top:4px">Recent Activity</div>
+  <div id="activity-list">
+    <div style="color:var(--muted);font-size:13px;padding:12px 0">Loading...</div>
+  </div>
+</div>
+
+<!-- ── SETTINGS ── -->
+<div class="tab-panel" id="tab-settings">
+  <div class="section-title" style="margin-top:4px">Server Connection</div>
+  <div class="card" style="padding:16px 20px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Enter once — needed to connect PCs via QR</div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Railway URL</label>
+      <input type="url" id="settings-api-url" placeholder="https://your-backend.up.railway.app"
+             style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:10px 12px;outline:none">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>API Key</label>
+      <input type="password" id="settings-api-key" placeholder="Your KIDOTIME_API_KEY"
+             style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:10px 12px;outline:none">
+    </div>
+    <button class="save-btn" style="width:100%;margin-bottom:8px" onclick="saveServerSettings()">Save Connection</button>
+    <button class="btn-ghost" style="width:100%;padding:10px;border-radius:10px;background:var(--surface2);border:1.5px solid var(--border);color:var(--muted);font-family:inherit;font-size:13px;cursor:pointer" onclick="testConnection()">🔍 Test Connection</button>
+  </div>
+
+  <div class="section-title" style="margin-top:16px">Connected PCs</div>
+  <div id="pcs-list">
+    <div class="pc-card">
+      <div class="pc-dot"></div>
+      <div style="flex:1"><div class="pc-name">Family PC</div><div class="pc-meta">Last seen: just now</div></div>
+    </div>
+  </div>
+  <button class="add-btn" onclick="openModal('qr-modal')">📷 Add another PC</button>
+
+  <div class="section-title" style="margin-top:16px">Children</div>
+  <div id="kids-settings-list">
+    <div style="color:var(--muted);font-size:13px;padding:12px 0">Loading...</div>
+  </div>
+  <button class="add-btn" onclick="openModal('add-kid-modal')">+ Add Child</button>
+</div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- CONNECT PC MODAL -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="modal" id="qr-modal">
+  <div class="modal-box">
+    <div class="modal-title">🖥️ Connect a PC</div>
+    <div class="modal-sub">Enter the token shown on the PC screen</div>
+    <div class="field">
+      <label>PC Token</label>
+      <input type="text" id="pc-token-input" placeholder="Paste token from PC screen"
+             autocomplete="off" spellcheck="false"
+             style="font-family:'DM Mono',monospace;font-size:13px">
+    </div>
+    <div id="connect-status" style="font-size:13px;color:var(--muted);min-height:18px;margin-bottom:8px"></div>
+    <div class="btn-row">
+      <button class="cancel-btn" onclick="closeQR()">Cancel</button>
+      <button class="save-btn" style="margin-top:0" onclick="connectPCManually()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- ADD CHILD MODAL                                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="modal" id="add-kid-modal">
+  <div class="modal-box">
+    <div class="modal-title">👶 Add Child</div>
+    <div class="modal-sub">Add a new child profile to KidoTime</div>
+    <div class="field">
+      <label>Child's Name</label>
+      <input type="text" id="kid-name" placeholder="e.g. Sophie" maxlength="30">
+    </div>
+    <div class="field">
+      <label>Daily Screen Time Limit</label>
+      <select id="kid-limit">
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="90">1.5 hours</option>
+        <option value="120" selected>2 hours</option>
+        <option value="180">3 hours</option>
+        <option value="240">4 hours</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Assign to PC</label>
+      <select id="kid-pc">
+        <option value="1">Family PC</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="cancel-btn" onclick="closeModal('add-kid-modal')">Cancel</button>
+      <button class="save-btn" style="margin-top:0" onclick="addKid()">Add Child</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Kid Modal -->
+<div class="modal" id="edit-kid-modal">
+  <div class="modal-box">
+    <div class="modal-title">✏️ Edit Child</div>
+    <div class="modal-sub">Update this child's profile</div>
+    <input type="hidden" id="edit-kid-id">
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="edit-kid-name" placeholder="Child's name" maxlength="30">
+    </div>
+    <div class="field">
+      <label>Daily Screen Time Limit</label>
+      <select id="edit-kid-limit">
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="90">1.5 hours</option>
+        <option value="120">2 hours</option>
+        <option value="180">3 hours</option>
+        <option value="240">4 hours</option>
+      </select>
+    </div>
+    <div class="btn-row" style="justify-content:space-between">
+      <button class="danger-btn" onclick="deleteKid()">🗑 Delete</button>
+      <div style="display:flex;gap:8px">
+        <button class="cancel-btn" onclick="closeModal('edit-kid-modal')">Cancel</button>
+        <button class="save-btn" style="margin-top:0" onclick="saveKidEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const idx = ['dashboard','schedule','activity','settings'].indexOf(name);
+  document.querySelectorAll('nav button')[idx].classList.add('active');
+}
+
+// ── Lock toggle ─────────────────────────────────────────────────────────────
+function toggleLock(btn) {
+  const locked = btn.classList.contains('unlocked');
+  btn.classList.toggle('unlocked', !locked);
+  btn.classList.toggle('locked', locked);
+  btn.textContent = locked ? '🔒 Locked' : '🔓 Unlocked';
+  showToast(locked ? 'Screen locked!' : 'Screen unlocked!');
+}
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// ── Modals ──────────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ── API helpers ──────────────────────────────────────────────────────────────
+function apiUrl()  { return localStorage.getItem('kt_api_url') || ''; }
+function apiKey()  { return localStorage.getItem('kt_api_key') || ''; }
+function apiHeaders() {
+  return { 'Content-Type': 'application/json', 'X-API-Key': apiKey() };
+}
+async function apiFetch(path, opts = {}) {
+  const url = apiUrl();
+  if (!url) throw new Error('Not connected to server yet. Scan a QR code first.');
+  const r = await fetch(url + path, { headers: apiHeaders(), ...opts });
+  if (!r.ok) throw new Error('Server error ' + r.status);
+  return r.json();
+}
+
+// ── Kids list ────────────────────────────────────────────────────────────────
+let kidsCache = [];
+
+async function loadKidsList() {
+  try {
+    kidsCache = await apiFetch('/api/kids');
+    renderKidsSettings();
+    renderDashboardKids();
+  } catch(e) {
+    document.getElementById('kids-settings-list').innerHTML =
+      `<div style="color:var(--muted);font-size:13px;padding:8px 0">
+        ${apiUrl() ? '⚠️ Could not load kids: ' + e.message : '⚠️ Not connected — scan QR code first'}
+      </div>`;
+  }
+}
+
+function renderKidsSettings() {
+  const el = document.getElementById('kids-settings-list');
+  if (!kidsCache.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No children added yet.</div>';
+    return;
+  }
+  el.innerHTML = `<div class="card" style="padding:4px 16px">` +
+    kidsCache.map(kid => {
+      const h = Math.floor(kid.daily_limit_minutes / 60);
+      const m = kid.daily_limit_minutes % 60;
+      const limitStr = h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+      return `<div class="settings-row">
+        <div>
+          <div class="settings-label">👤 ${kid.name}</div>
+          <div class="settings-sub">${limitStr} daily limit</div>
+        </div>
+        <button class="danger-btn" onclick="openEditKid(${kid.id})">Edit</button>
+      </div>`;
+    }).join('') + `</div>`;
+}
+
+function renderDashboardKids() {
+  const list = document.getElementById('dashboard-kids-list');
+  const meta = document.getElementById('pc-meta');
+  if (!list) return;
+
+  if (meta) meta.textContent = `${kidsCache.length} kid${kidsCache.length !== 1 ? 's' : ''}`;
+
+  if (!kidsCache.length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:12px 0">
+      No children added yet. Tap + Add Child below.</div>`;
+    return;
+  }
+
+  list.innerHTML = kidsCache.map(kid => {
+    const used   = kid.usage_today_minutes || 0;
+    const limit  = kid.daily_limit_minutes || 120;
+    const pct    = Math.min(100, Math.round(used / limit * 100));
+    const remain = Math.max(0, limit - used);
+    const rh = Math.floor(remain / 60), rm = remain % 60;
+    const barColor = pct > 85 ? 'red' : pct > 60 ? 'orange' : 'green';
+    const locked = kid.is_locked;
+    const uh = Math.floor(used / 60), um = used % 60;
+    const lh = Math.floor(limit / 60), lm = limit % 60;
+    const usedStr   = uh > 0 ? `${uh}h ${um}m` : `${um}m`;
+    const limitStr  = lh > 0 ? `${lh}h ${lm > 0 ? lm + 'm' : ''}` : `${lm}m`;
+    const remainStr = rh > 0 ? `${rh}h ${rm}m remaining` : `${rm}m remaining`;
+
+    return `<div class="card">
+      <div class="device-header">
+        <div class="device-info">
+          <div class="device-icon">👤</div>
+          <div>
+            <div class="device-name">${kid.name}</div>
+            <div class="device-meta">${remainStr} today</div>
+          </div>
+        </div>
+        <button class="lock-btn ${locked ? 'locked' : 'unlocked'}"
+          onclick="toggleLockKid(this, ${kid.id})">
+          ${locked ? '🔒 Locked' : '🔓 Unlocked'}
+        </button>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-label"><span>Today's Screen Time</span><span>${usedStr} / ${limitStr}</span></div>
+        <div class="bar-track"><div class="bar-fill ${barColor}" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleLockKid(btn, kidId) {
+  const locked = btn.classList.contains('unlocked');
+  try {
+    await apiFetch(`/api/kids/${kidId}/lock`, {
+      method: 'POST',
+      body: JSON.stringify({ locked })
+    });
+    btn.classList.toggle('unlocked', !locked);
+    btn.classList.toggle('locked', locked);
+    btn.textContent = locked ? '🔒 Locked' : '🔓 Unlocked';
+    showToast(locked ? 'Screen locked!' : 'Screen unlocked!');
+  } catch(e) {
+    showToast('⚠️ Could not update lock: ' + e.message);
+  }
+}
+
+// ── Add Child ────────────────────────────────────────────────────────────────
+async function addKid() {
+  const name  = document.getElementById('kid-name').value.trim();
+  const limit = parseInt(document.getElementById('kid-limit').value);
+  if (!name) { showToast('Please enter a name'); return; }
+  try {
+    await apiFetch('/api/kids', {
+      method: 'POST',
+      body: JSON.stringify({ name, daily_limit_minutes: limit })
+    });
+    showToast(`${name} added! 🎉`);
+    closeModal('add-kid-modal');
+    document.getElementById('kid-name').value = '';
+    loadKidsList();
+  } catch(e) {
+    showToast('⚠️ ' + e.message);
+  }
+}
+
+// ── Edit Child ───────────────────────────────────────────────────────────────
+function openEditKid(kidId) {
+  const kid = kidsCache.find(k => k.id === kidId);
+  if (!kid) return;
+  document.getElementById('edit-kid-id').value   = kidId;
+  document.getElementById('edit-kid-name').value  = kid.name;
+  // Set the matching limit option
+  const sel = document.getElementById('edit-kid-limit');
+  const opt = [...sel.options].find(o => parseInt(o.value) === kid.daily_limit_minutes);
+  if (opt) sel.value = opt.value;
+  else { sel.value = kid.daily_limit_minutes; }
+  openModal('edit-kid-modal');
+}
+
+async function saveKidEdit() {
+  const id    = parseInt(document.getElementById('edit-kid-id').value);
+  const name  = document.getElementById('edit-kid-name').value.trim();
+  const limit = parseInt(document.getElementById('edit-kid-limit').value);
+  if (!name) { showToast('Name cannot be empty'); return; }
+  try {
+    await apiFetch(`/api/kids/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, daily_limit_minutes: limit })
+    });
+    showToast(`${name} updated! ✅`);
+    closeModal('edit-kid-modal');
+    loadKidsList();
+  } catch(e) {
+    showToast('⚠️ ' + e.message);
+  }
+}
+
+async function deleteKid() {
+  const id   = parseInt(document.getElementById('edit-kid-id').value);
+  const name = document.getElementById('edit-kid-name').value.trim();
+  if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+  try {
+    await apiFetch(`/api/kids/${id}`, { method: 'DELETE' });
+    showToast(`${name} deleted`);
+    closeModal('edit-kid-modal');
+    loadKidsList();
+  } catch(e) {
+    showToast('⚠️ ' + e.message);
+  }
+}
+
+// ── Server settings ───────────────────────────────────────────────────────────
+async function testConnection() {
+  const url = localStorage.getItem('kt_api_url') || '';
+  const key = localStorage.getItem('kt_api_key') || '';
+  if (!url) { showToast('⚠️ Save URL and key first'); return; }
+  showToast('Testing...');
+  try {
+    const r = await fetch(url + '/api/kids', {
+      headers: { 'X-API-Key': key }
+    });
+    if (r.ok) {
+      showToast('✅ Connected! Server is working.');
+    } else {
+      showToast(`⚠️ Server replied ${r.status} — check API key`);
+    }
+  } catch(e) {
+    showToast('❌ Cannot reach server: ' + e.message);
+  }
+}
+
+function saveServerSettings() {
+  const url = document.getElementById('settings-api-url').value.trim().replace(/\/$/, '');
+  const key = document.getElementById('settings-api-key').value.trim();
+  if (!url.startsWith('http')) { showToast('⚠️ URL must start with https://'); return; }
+  if (!key) { showToast('⚠️ API key cannot be empty'); return; }
+  localStorage.setItem('kt_api_url', url);
+  localStorage.setItem('kt_api_key', key);
+  showToast('✅ Connection saved!');
+  loadKidsList();
+}
+
+function prefillSettings() {
+  const url = localStorage.getItem('kt_api_url') || '';
+  const key = localStorage.getItem('kt_api_key') || '';
+  const urlEl = document.getElementById('settings-api-url');
+  const keyEl = document.getElementById('settings-api-key');
+  if (urlEl && url) urlEl.value = url;
+  if (keyEl && key) keyEl.value = key;
+}
+
+// Load kids on startup
+window.addEventListener('DOMContentLoaded', () => {
+  prefillSettings();
+  loadKidsList();
+});
+
+// ── QR Code Scanner ─────────────────────────────────────────────────────────
+let qrStream = null;
+let qrAnimFrame = null;
+let qrScanned = false;
+
+async function connectPCManually() {
+  const token  = document.getElementById('pc-token-input').value.trim();
+  const status = document.getElementById('connect-status');
+  const apiUrl = localStorage.getItem('kt_api_url') || '';
+  const apiKey = localStorage.getItem('kt_api_key') || '';
+
+  if (!token) { status.textContent = '⚠️ Please enter the token from the PC screen'; return; }
+  if (!apiUrl) { status.textContent = '⚠️ Save your Railway URL in Settings first'; return; }
+  if (!apiKey) { status.textContent = '⚠️ Save your API key in Settings first'; return; }
+
+  status.textContent = '🔗 Connecting...';
+  status.style.color = 'var(--muted)';
+
+  try {
+    const resp = await fetch(apiUrl + '/api/pcs/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify({ token, nickname: 'Family PC' })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error('Server error ' + resp.status + ': ' + body.slice(0,80));
+    }
+    status.textContent = '✅ PC connected!';
+    status.style.color = 'var(--accent)';
+    setTimeout(() => {
+      closeQR();
+      showToast('PC connected! 🎉');
+      loadKidsList();
+    }, 800);
+  } catch(e) {
+    status.textContent = '⚠️ ' + e.message;
+    status.style.color = 'var(--accent2)';
+  }
+}
+
+function closeQR() {
+  closeModal('qr-modal');
+  document.getElementById('pc-token-input').value = '';
+  document.getElementById('connect-status').textContent = '';
+}
+
+// ── PWA Service Worker ───────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
