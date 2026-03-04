@@ -39,7 +39,13 @@ def init_db():
         daily_limit_minutes INTEGER DEFAULT 120,
         is_locked INTEGER DEFAULT 0,
         pc_id INTEGER,
+        pin TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+    # Migration: add pin column if it doesn't exist yet
+    try:
+        c.execute("ALTER TABLE kids ADD COLUMN pin TEXT")
+    except:
+        pass
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         kid_id INTEGER NOT NULL, app_name TEXT,
@@ -163,6 +169,14 @@ def update_kid_put(kid_id: int, data: KidUpdate, key=Depends(verify_key)):
 def delete_kid(kid_id: int, key=Depends(verify_key)):
     conn = get_db()
     conn.execute("DELETE FROM kids WHERE id=?", (kid_id,))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.post("/api/kids/{kid_id}/pin")
+def set_kid_pin(kid_id: int, body: dict, key=Depends(verify_key)):
+    pin = str(body.get("pin", ""))
+    if not pin: raise HTTPException(400, "pin required")
+    conn = get_db()
+    conn.execute("UPDATE kids SET pin=? WHERE id=?", (pin, kid_id))
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/api/kids/{kid_id}/lock")
