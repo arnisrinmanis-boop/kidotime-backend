@@ -12,7 +12,7 @@ import sqlite3, json, os, secrets
 app = FastAPI(title="KidoTime API", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-API_KEY = os.environ.get("KIDSGUARD_API_KEY", "change-this-secret-key")
+API_KEY = os.environ.get("KIDOTIME_API_KEY") or os.environ.get("KIDSGUARD_API_KEY", "change-this-secret-key")
 DB_PATH = "kidotime.db"
 
 def verify_key(x_api_key: str = Header(...)):
