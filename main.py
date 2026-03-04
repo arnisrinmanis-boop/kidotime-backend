@@ -37,6 +37,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS pcs (
         id SERIAL PRIMARY KEY, nickname TEXT NOT NULL,
         token TEXT UNIQUE NOT NULL, registered INTEGER DEFAULT 0,
+        active_kid_id INTEGER DEFAULT NULL,
         last_seen TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS kids (
         id SERIAL PRIMARY KEY, name TEXT NOT NULL,
@@ -113,6 +114,14 @@ def check_registration(token: str, key=Depends(verify_key)):
     conn.commit(); conn.close()
     return {"registered": bool(pc["registered"]), "pc_id": pc["id"]}
 
+@app.post("/api/pcs/{token}/active-kid")
+def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
+    kid_id = body.get("kid_id")  # None = parent session / no active kid
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE pcs SET active_kid_id=%s, last_seen=%s WHERE token=%s",
+              (kid_id, datetime.now().isoformat(), token))
+    conn.commit(); conn.close(); return {"ok": True}
+
 @app.get("/api/kids")
 def get_kids(key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
@@ -120,10 +129,14 @@ def get_kids(key=Depends(verify_key)):
     c.execute("SELECT * FROM kids")
     kids = rows_to_dicts(c.fetchall(), c)
     result = []
+    # Get active kid IDs from all PCs
+    c.execute("SELECT active_kid_id FROM pcs WHERE active_kid_id IS NOT NULL")
+    active_ids = {row[0] for row in c.fetchall()}
+
     for kid in kids:
         c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s", (kid["id"], today))
         usage = c.fetchone()[0]
-        result.append({**kid, "usage_today_minutes": usage, "limit_reached": usage >= kid["daily_limit_minutes"]})
+        result.append({**kid, "usage_today_minutes": usage, "limit_reached": usage >= kid["daily_limit_minutes"], "active": kid["id"] in active_ids})
     conn.close(); return result
 
 @app.post("/api/kids")
