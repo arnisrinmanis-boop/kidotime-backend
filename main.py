@@ -151,10 +151,25 @@ def update_kid(kid_id: int, data: KidUpdate, key=Depends(verify_key)):
         conn.execute("UPDATE kids SET daily_limit_minutes=? WHERE id=?", (data.daily_limit_minutes, kid_id))
     conn.commit(); conn.close(); return {"ok": True}
 
+@app.put("/api/kids/{kid_id}")
+def update_kid_put(kid_id: int, data: KidUpdate, key=Depends(verify_key)):
+    conn = get_db()
+    if data.name: conn.execute("UPDATE kids SET name=? WHERE id=?", (data.name, kid_id))
+    if data.daily_limit_minutes is not None:
+        conn.execute("UPDATE kids SET daily_limit_minutes=? WHERE id=?", (data.daily_limit_minutes, kid_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
 @app.delete("/api/kids/{kid_id}")
 def delete_kid(kid_id: int, key=Depends(verify_key)):
     conn = get_db()
     conn.execute("DELETE FROM kids WHERE id=?", (kid_id,))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.post("/api/kids/{kid_id}/lock")
+def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
+    locked = 1 if body.get("locked") else 0
+    conn = get_db()
+    conn.execute("UPDATE kids SET is_locked=? WHERE id=?", (locked, kid_id))
     conn.commit(); conn.close(); return {"ok": True}
 
 # ── Lock / Commands ───────────────────────────────────────────────────────────
