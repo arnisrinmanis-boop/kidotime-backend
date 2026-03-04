@@ -85,7 +85,7 @@ class LockCommand(BaseModel):
 # ── QR / PC Registration ──────────────────────────────────────────────────────
 @app.post("/api/pcs/generate-token")
 def generate_pc_token(nickname: str = "Family PC", key=Depends(verify_key)):
-    token = secrets.token_urlsafe(32)
+    token = ''.join([str(secrets.randbelow(10)) for _ in range(10)])
     conn = get_db()
     conn.execute("INSERT INTO pcs (nickname, token, registered) VALUES (?,?,0)", (nickname, token))
     conn.commit()
@@ -170,6 +170,9 @@ def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
     locked = 1 if body.get("locked") else 0
     conn = get_db()
     conn.execute("UPDATE kids SET is_locked=? WHERE id=?", (locked, kid_id))
+    # Insert command so PC picks it up via polling
+    command = "lock" if locked else "unlock"
+    conn.execute("INSERT INTO commands (kid_id, command, status) VALUES (?,?,'pending')", (kid_id, command))
     conn.commit(); conn.close(); return {"ok": True}
 
 # ── Lock / Commands ───────────────────────────────────────────────────────────
