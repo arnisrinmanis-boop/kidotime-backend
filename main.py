@@ -52,6 +52,12 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS commands (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, command TEXT NOT NULL,
         payload TEXT, status TEXT DEFAULT 'pending', created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+    # Migration: add active_kid_id column to pcs if not exists
+    try:
+        c.execute("ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL")
+        conn.commit()
+    except:
+        pass
     conn.commit(); conn.close()
 
 init_db()
