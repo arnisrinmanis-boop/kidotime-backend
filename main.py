@@ -197,6 +197,8 @@ def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
     command = "lock" if locked else "unlock"
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE kids SET is_locked=%s WHERE id=%s", (locked, kid_id))
+    # Clear all stale pending commands for this kid before adding new one
+    c.execute("UPDATE commands SET status='done' WHERE kid_id=%s AND status='pending'", (kid_id,))
     c.execute("INSERT INTO commands (kid_id, command, status) VALUES (%s,%s,'pending')", (kid_id, command))
     conn.commit(); conn.close(); return {"ok": True}
 
@@ -232,7 +234,8 @@ def report_session(session: SessionReport, key=Depends(verify_key)):
     kid = row_to_dict(c.fetchone(), c)
     if usage >= kid["daily_limit_minutes"] and not kid["is_locked"]:
         c.execute("UPDATE kids SET is_locked=1 WHERE id=%s", (session.kid_id,))
-        c.execute("INSERT INTO commands (kid_id,command) VALUES (%s,'lock')", (session.kid_id,))
+        c.execute("UPDATE commands SET status='done' WHERE kid_id=%s AND status='pending'", (session.kid_id,))
+        c.execute("INSERT INTO commands (kid_id,command,status) VALUES (%s,'lock','pending')", (session.kid_id,))
     conn.commit(); conn.close()
     return {"ok": True, "total_today": usage}
 
