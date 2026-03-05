@@ -251,12 +251,21 @@ def get_usage(kid_id: int, days: int = 7, key=Depends(verify_key)):
     result = rows_to_dicts(c.fetchall(), c); conn.close(); return result
 
 @app.get("/api/schedules")
-def get_schedules(key=Depends(verify_key)):
+def get_schedules(kid_id: Optional[int] = None, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM schedules")
+    if kid_id:
+        c.execute("SELECT * FROM schedules WHERE kid_id=%s ORDER BY id", (kid_id,))
+    else:
+        c.execute("SELECT * FROM schedules ORDER BY kid_id, id")
     result = rows_to_dicts(c.fetchall(), c); conn.close()
-    for r in result: r["days"] = json.loads(r["days"])
+    for r in result: r["days"] = json.loads(r["days"]) if isinstance(r["days"], str) else r["days"]
     return result
+
+@app.delete("/api/schedules/{schedule_id}")
+def delete_schedule(schedule_id: int, key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("DELETE FROM schedules WHERE id=%s", (schedule_id,))
+    conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/api/schedules")
 def create_schedule(s: ScheduleCreate, key=Depends(verify_key)):
