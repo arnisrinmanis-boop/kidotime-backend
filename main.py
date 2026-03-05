@@ -67,7 +67,6 @@ def init_db():
         "fri INTEGER DEFAULT 120, sat INTEGER DEFAULT 180, "
         "sun INTEGER DEFAULT 180)"
     )
-    conn.commit()
     conn.commit(); conn.close()
 
 init_db()
