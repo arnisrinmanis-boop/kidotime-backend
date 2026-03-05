@@ -200,6 +200,10 @@ def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
     # Clear all stale pending commands for this kid before adding new one
     c.execute("UPDATE commands SET status='done' WHERE kid_id=%s AND status='pending'", (kid_id,))
     c.execute("INSERT INTO commands (kid_id, command, status) VALUES (%s,%s,'pending')", (kid_id, command))
+    # When unlocking, reset today's usage so PC doesn't immediately re-lock
+    if not locked:
+        today = date.today().isoformat()
+        c.execute("DELETE FROM sessions WHERE kid_id=%s AND date=%s", (kid_id, today))
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/api/lock")
