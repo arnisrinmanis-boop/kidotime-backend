@@ -242,8 +242,12 @@ def report_session(session: SessionReport, key=Depends(verify_key)):
 @app.get("/api/usage/{kid_id}")
 def get_usage(kid_id: int, days: int = 7, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT date,app_name,SUM(duration_minutes) as total FROM sessions WHERE kid_id=%s GROUP BY date,app_name ORDER BY date DESC LIMIT %s",
-              (kid_id, days*10))
+    c.execute("""SELECT date, app_name, SUM(duration_minutes) as total
+                  FROM sessions
+                  WHERE kid_id=%s AND date >= CURRENT_DATE - INTERVAL '%s days'
+                  GROUP BY date, app_name
+                  ORDER BY date DESC, total DESC""",
+              (kid_id, days))
     result = rows_to_dicts(c.fetchall(), c); conn.close(); return result
 
 @app.get("/api/schedules")
