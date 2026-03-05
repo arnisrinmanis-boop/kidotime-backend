@@ -243,6 +243,32 @@ def report_session(session: SessionReport, key=Depends(verify_key)):
     conn.commit(); conn.close()
     return {"ok": True, "total_today": usage}
 
+@app.get("/api/weekly-limits/{kid_id}")
+def get_weekly_limits(kid_id: int, key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT * FROM weekly_limits WHERE kid_id=%s", (kid_id,))
+    row = c.fetchone()
+    if row:
+        result = row_to_dict(row, c); conn.close(); return result
+    # Return defaults if not set
+    conn.close()
+    return {"kid_id": kid_id, "mon":120,"tue":120,"wed":120,"thu":120,"fri":120,"sat":180,"sun":180}
+
+@app.put("/api/weekly-limits/{kid_id}")
+def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id FROM weekly_limits WHERE kid_id=%s", (kid_id,))
+    exists = c.fetchone()
+    days = ["mon","tue","wed","thu","fri","sat","sun"]
+    vals = [body.get(d, 120) for d in days]
+    if exists:
+        c.execute("""UPDATE weekly_limits SET mon=%s,tue=%s,wed=%s,thu=%s,fri=%s,sat=%s,sun=%s
+                     WHERE kid_id=%s""", vals + [kid_id])
+    else:
+        c.execute("""INSERT INTO weekly_limits (kid_id,mon,tue,wed,thu,fri,sat,sun)
+                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""", [kid_id] + vals)
+    conn.commit(); conn.close(); return {"ok": True}
+
 @app.get("/api/usage/{kid_id}")
 def get_usage(kid_id: int, days: int = 7, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
