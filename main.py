@@ -58,6 +58,16 @@ def init_db():
         conn.commit()
     except:
         pass
+    # Migration: create weekly_limits table if not exists
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS weekly_limits ("
+        "id SERIAL PRIMARY KEY, kid_id INTEGER UNIQUE, "
+        "mon INTEGER DEFAULT 120, tue INTEGER DEFAULT 120, "
+        "wed INTEGER DEFAULT 120, thu INTEGER DEFAULT 120, "
+        "fri INTEGER DEFAULT 120, sat INTEGER DEFAULT 180, "
+        "sun INTEGER DEFAULT 180)"
+    )
+    conn.commit()
     conn.commit(); conn.close()
 
 init_db()
