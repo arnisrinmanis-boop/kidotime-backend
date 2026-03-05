@@ -56,8 +56,8 @@ def init_db():
     try:
         c.execute("ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL")
         conn.commit()
-    except:
-        pass
+    except Exception:
+        conn.rollback()  # Must rollback or connection stays in error state
     # Migration: create weekly_limits table if not exists
     c.execute(
         "CREATE TABLE IF NOT EXISTS weekly_limits ("
