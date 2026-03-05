@@ -2,7 +2,7 @@
 KidoTime Backend API v2
 PostgreSQL version — data persists across Railway restarts
 """
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, date
@@ -255,12 +255,13 @@ def get_weekly_limits(kid_id: int, key=Depends(verify_key)):
     return {"kid_id": kid_id, "mon":120,"tue":120,"wed":120,"thu":120,"fri":120,"sat":180,"sun":180}
 
 @app.put("/api/weekly-limits/{kid_id}")
-def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
+async def set_weekly_limits(kid_id: int, request: Request, key=Depends(verify_key)):
+    body = await request.json()
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT id FROM weekly_limits WHERE kid_id=%s", (kid_id,))
     exists = c.fetchone()
     days = ["mon","tue","wed","thu","fri","sat","sun"]
-    vals = [body.get(d, 120) for d in days]
+    vals = [int(body.get(d, 120)) for d in days]
     if exists:
         c.execute("""UPDATE weekly_limits SET mon=%s,tue=%s,wed=%s,thu=%s,fri=%s,sat=%s,sun=%s
                      WHERE kid_id=%s""", vals + [kid_id])
