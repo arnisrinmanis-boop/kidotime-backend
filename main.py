@@ -13,12 +13,8 @@ import psycopg2
 app = FastAPI(title="KidoTime API", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-API_KEY = os.environ.get("KIDOTIME_API_KEY") or os.environ.get("KIDSGUARD_API_KEY", "change-this-secret-key")
+MASTER_KEY = os.environ.get("KIDOTIME_API_KEY") or os.environ.get("KIDSGUARD_API_KEY", "change-this-secret-key")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-
-def verify_key(x_api_key: str = Header(...)):
-    if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
 
 def get_db():
     conn = psycopg2.connect(DATABASE_URL)
@@ -32,17 +28,38 @@ def rows_to_dicts(rows, cursor):
     cols = [desc[0] for desc in cursor.description]
     return [dict(zip(cols, row)) for row in rows]
 
+def verify_key(x_api_key: str = Header(...)):
+    # Master key (your personal key) still works
+    if x_api_key == MASTER_KEY:
+        return {"family_id": None, "api_key": MASTER_KEY}
+    # Check family API keys
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id FROM families WHERE api_key=%s", (x_api_key,))
+    row = c.fetchone(); conn.close()
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return {"family_id": row[0], "api_key": x_api_key}
+
+def get_family_id(auth=Depends(verify_key)):
+    return auth["family_id"]
+
 def init_db():
     conn = get_db(); c = conn.cursor()
+    # Families table
+    c.execute("""CREATE TABLE IF NOT EXISTS families (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        pin TEXT NOT NULL, api_key TEXT UNIQUE NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS pcs (
         id SERIAL PRIMARY KEY, nickname TEXT NOT NULL,
         token TEXT UNIQUE NOT NULL, registered INTEGER DEFAULT 0,
-        active_kid_id INTEGER DEFAULT NULL,
+        active_kid_id INTEGER DEFAULT NULL, family_id INTEGER DEFAULT NULL,
         last_seen TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS kids (
         id SERIAL PRIMARY KEY, name TEXT NOT NULL,
         daily_limit_minutes INTEGER DEFAULT 120, is_locked INTEGER DEFAULT 0,
-        pc_id INTEGER, pin TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        pc_id INTEGER, pin TEXT, family_id INTEGER DEFAULT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, app_name TEXT,
         started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT)""")
@@ -52,13 +69,16 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS commands (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, command TEXT NOT NULL,
         payload TEXT, status TEXT DEFAULT 'pending', created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
-    # Migration: add active_kid_id column to pcs if not exists
+    # Migrations
+    for col in ["active_kid_id", "family_id"]:
+        try:
+            c.execute(f"ALTER TABLE pcs ADD COLUMN {col} {'INTEGER DEFAULT NULL' if col == 'family_id' else 'INTEGER DEFAULT NULL'}")
+            conn.commit()
+        except Exception: conn.rollback()
     try:
-        c.execute("ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL")
+        c.execute("ALTER TABLE kids ADD COLUMN family_id INTEGER DEFAULT NULL")
         conn.commit()
-    except Exception:
-        conn.rollback()  # Must rollback or connection stays in error state
-    # Migration: create weekly_limits table if not exists
+    except Exception: conn.rollback()
     c.execute(
         "CREATE TABLE IF NOT EXISTS weekly_limits ("
         "id SERIAL PRIMARY KEY, kid_id INTEGER UNIQUE, "
@@ -70,6 +90,13 @@ def init_db():
     conn.commit(); conn.close()
 
 init_db()
+
+# ── Family Auth Models ────────────────────────────────────────────────────────
+class FamilyRegister(BaseModel):
+    name: str; pin: str
+
+class FamilyLogin(BaseModel):
+    name: str; pin: str
 
 class KidCreate(BaseModel):
     name: str; daily_limit_minutes: int = 120; pc_id: Optional[int] = None
@@ -90,11 +117,40 @@ class ScheduleCreate(BaseModel):
 class LockCommand(BaseModel):
     kid_id: int; action: str
 
+# ── Family Registration & Login ───────────────────────────────────────────────
+@app.post("/api/families/register")
+def register_family(data: FamilyRegister):
+    if len(data.pin) != 6 or not data.pin.isdigit():
+        raise HTTPException(400, "PIN must be 6 digits")
+    if not data.name.strip():
+        raise HTTPException(400, "Family name required")
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id FROM families WHERE name=%s", (data.name.strip(),))
+    if c.fetchone():
+        conn.close(); raise HTTPException(400, "Family name already taken")
+    api_key = secrets.token_hex(16)
+    c.execute("INSERT INTO families (name, pin, api_key) VALUES (%s, %s, %s)",
+              (data.name.strip(), data.pin, api_key))
+    conn.commit(); conn.close()
+    return {"ok": True, "api_key": api_key, "family_name": data.name.strip()}
+
+@app.post("/api/families/login")
+def login_family(data: FamilyLogin):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id, api_key FROM families WHERE name=%s AND pin=%s",
+              (data.name.strip(), data.pin))
+    row = c.fetchone(); conn.close()
+    if not row:
+        raise HTTPException(401, "Wrong family name or PIN")
+    return {"ok": True, "api_key": row[1], "family_name": data.name.strip()}
+
 @app.post("/api/pcs/generate-token")
 def generate_pc_token(nickname: str = "Family PC", key=Depends(verify_key)):
     token = ''.join([str(secrets.randbelow(10)) for _ in range(10)])
+    family_id = key["family_id"]
     conn = get_db(); c = conn.cursor()
-    c.execute("INSERT INTO pcs (nickname, token, registered) VALUES (%s,%s,0) RETURNING id", (nickname, token))
+    c.execute("INSERT INTO pcs (nickname, token, registered, family_id) VALUES (%s,%s,0,%s) RETURNING id",
+              (nickname, token, family_id))
     pc_id = c.fetchone()[0]
     conn.commit(); conn.close()
     return {"pc_id": pc_id, "token": token, "nickname": nickname}
@@ -104,7 +160,7 @@ def register_pc(data: PCRegister, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT * FROM pcs WHERE token=%s", (data.token,))
     row = c.fetchone()
-    if not row: conn.close(); raise HTTPException(404, "Invalid QR code")
+    if not row: conn.close(); raise HTTPException(404, "Invalid token")
     c.execute("UPDATE pcs SET registered=1, nickname=%s, last_seen=%s WHERE token=%s",
               (data.nickname, datetime.now().isoformat(), data.token))
     c.execute("SELECT * FROM pcs WHERE token=%s", (data.token,))
@@ -114,8 +170,12 @@ def register_pc(data: PCRegister, key=Depends(verify_key)):
 
 @app.get("/api/pcs")
 def get_pcs(key=Depends(verify_key)):
+    family_id = key["family_id"]
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM pcs WHERE registered=1")
+    if family_id:
+        c.execute("SELECT * FROM pcs WHERE registered=1 AND family_id=%s", (family_id,))
+    else:
+        c.execute("SELECT * FROM pcs WHERE registered=1")
     result = rows_to_dicts(c.fetchall(), c); conn.close(); return result
 
 @app.delete("/api/pcs/by-id/{pc_id}")
@@ -150,7 +210,7 @@ def pc_offline(token: str, key=Depends(verify_key)):
 
 @app.post("/api/pcs/{token}/active-kid")
 def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
-    kid_id = body.get("kid_id")  # None = parent session / no active kid
+    kid_id = body.get("kid_id")
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE pcs SET active_kid_id=%s, last_seen=%s WHERE token=%s",
               (kid_id, datetime.now().isoformat(), token))
@@ -158,12 +218,15 @@ def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
 
 @app.get("/api/kids")
 def get_kids(key=Depends(verify_key)):
+    family_id = key["family_id"]
     conn = get_db(); c = conn.cursor()
     today = date.today().isoformat()
-    c.execute("SELECT * FROM kids")
+    if family_id:
+        c.execute("SELECT * FROM kids WHERE family_id=%s", (family_id,))
+    else:
+        c.execute("SELECT * FROM kids")
     kids = rows_to_dicts(c.fetchall(), c)
     result = []
-    # Get active kid IDs only from PCs seen in last 2 minutes (online check)
     from datetime import datetime, timedelta
     cutoff = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
     c.execute("SELECT active_kid_id FROM pcs WHERE active_kid_id IS NOT NULL AND last_seen > %s", (cutoff,))
@@ -177,9 +240,10 @@ def get_kids(key=Depends(verify_key)):
 
 @app.post("/api/kids")
 def create_kid(data: KidCreate, key=Depends(verify_key)):
+    family_id = key["family_id"]
     conn = get_db(); c = conn.cursor()
-    c.execute("INSERT INTO kids (name, daily_limit_minutes, pc_id) VALUES (%s,%s,%s) RETURNING id",
-              (data.name, data.daily_limit_minutes, data.pc_id))
+    c.execute("INSERT INTO kids (name, daily_limit_minutes, pc_id, family_id) VALUES (%s,%s,%s,%s) RETURNING id",
+              (data.name, data.daily_limit_minutes, data.pc_id, family_id))
     kid_id = c.fetchone()[0]
     conn.commit(); conn.close(); return {"ok": True, "id": kid_id}
 
