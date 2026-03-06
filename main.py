@@ -118,7 +118,7 @@ def get_pcs(key=Depends(verify_key)):
     c.execute("SELECT * FROM pcs WHERE registered=1")
     result = rows_to_dicts(c.fetchall(), c); conn.close(); return result
 
-@app.delete("/api/pcs/{pc_id}")
+@app.delete("/api/pcs/by-id/{pc_id}")
 def delete_pc(pc_id: int, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     c.execute("DELETE FROM pcs WHERE id=%s", (pc_id,))
