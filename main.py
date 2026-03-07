@@ -270,14 +270,16 @@ def get_weekly_limits(kid_id: int, key=Depends(verify_key)):
 @app.put("/api/weekly-limits/{kid_id}")
 def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT id FROM weekly_limits WHERE kid_id=%s", (kid_id,))
-    exists = c.fetchone()
     days = ["mon","tue","wed","thu","fri","sat","sun"]
-    vals = [body.get(d, 120) for d in days]
-    if exists:
+    c.execute("SELECT mon,tue,wed,thu,fri,sat,sun FROM weekly_limits WHERE kid_id=%s", (kid_id,))
+    existing = c.fetchone()
+    if existing:
+        # Merge: only update days that are in body, keep existing for others
+        vals = [body[d] if d in body else existing[i] for i, d in enumerate(days)]
         c.execute("UPDATE weekly_limits SET mon=%s,tue=%s,wed=%s,thu=%s,fri=%s,sat=%s,sun=%s WHERE kid_id=%s",
                   (*vals, kid_id))
     else:
+        vals = [body.get(d, 120) for d in days]
         c.execute("INSERT INTO weekly_limits (kid_id,mon,tue,wed,thu,fri,sat,sun) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                   (kid_id, *vals))
     conn.commit(); conn.close(); return {"ok": True}
