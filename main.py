@@ -104,7 +104,7 @@ def register_pc(data: PCRegister, key=Depends(verify_key)):
     row = c.fetchone()
     if not row: conn.close(); raise HTTPException(404, "Invalid token")
     c.execute("UPDATE pcs SET registered=1, nickname=%s, last_seen=%s WHERE token=%s",
-              (data.nickname, datetime.now().isoformat(), data.token))
+              (data.nickname, datetime.utcnow().isoformat(), data.token))
     c.execute("SELECT * FROM pcs WHERE token=%s", (data.token,))
     result = row_to_dict(c.fetchone(), c)
     conn.commit(); conn.close()
@@ -129,21 +129,21 @@ def check_registration(token: str, key=Depends(verify_key)):
     row = c.fetchone()
     if not row: conn.close(); raise HTTPException(404, "Token not found")
     pc = row_to_dict(row, c)
-    c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.now().isoformat(), token))
+    c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close()
     return {"registered": bool(pc["registered"]), "pc_id": pc["id"]}
 
 @app.post("/api/pcs/{token}/heartbeat")
 def pc_heartbeat(token: str, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
-    c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.now().isoformat(), token))
+    c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/api/pcs/{token}/offline")
 def pc_offline(token: str, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE pcs SET active_kid_id=NULL, last_seen=%s WHERE token=%s",
-              (datetime.now().isoformat(), token))
+              (datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/api/pcs/{token}/active-kid")
@@ -151,7 +151,7 @@ def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
     kid_id = body.get("kid_id")
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE pcs SET active_kid_id=%s, last_seen=%s WHERE token=%s",
-              (kid_id, datetime.now().isoformat(), token))
+              (kid_id, datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.get("/api/kids")
@@ -174,7 +174,7 @@ def get_kids(key=Depends(verify_key)):
         wl_row = c.fetchone()
         effective_limit = wl_row[0] if wl_row and wl_row[0] is not None else kid["daily_limit_minutes"]
         active_pc_name = active_pcs.get(kid["id"])
-        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": kid["id"] in active_ids, "active_pc_name": active_pc_name})
+        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": bool(kid["id"] in active_ids), "active_pc_name": active_pc_name})
     conn.close(); return result
 
 @app.post("/api/kids")
@@ -311,6 +311,17 @@ def create_schedule(s: ScheduleCreate, key=Depends(verify_key)):
     c.execute("INSERT INTO schedules (kid_id,label,days,block_from,block_until,is_active) VALUES (%s,%s,%s,%s,%s,%s)",
               (s.kid_id,s.label,json.dumps(s.days),s.block_from,s.block_until,int(s.is_active)))
     conn.commit(); conn.close(); return {"ok": True}
+
+@app.get("/api/debug/pcs")
+def debug_pcs(key=Depends(verify_key)):
+    from datetime import datetime, timedelta
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id, nickname, token, active_kid_id, last_seen FROM pcs")
+    rows = rows_to_dicts(c.fetchall(), c)
+    now = datetime.utcnow()
+    cutoff = (now - timedelta(seconds=60)).isoformat()
+    conn.close()
+    return {"now_utc": now.isoformat(), "cutoff": cutoff, "pcs": rows}
 
 @app.get("/")
 def health():
