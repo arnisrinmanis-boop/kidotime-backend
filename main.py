@@ -279,7 +279,7 @@ def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
         c.execute("UPDATE weekly_limits SET mon=%s,tue=%s,wed=%s,thu=%s,fri=%s,sat=%s,sun=%s WHERE kid_id=%s",
                   (*vals, kid_id))
     else:
-        vals = [body.get(d, 120) for d in days]
+        vals = [body.get(d, 30) for d in days]
         c.execute("INSERT INTO weekly_limits (kid_id,mon,tue,wed,thu,fri,sat,sun) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                   (kid_id, *vals))
     conn.commit(); conn.close(); return {"ok": True}
