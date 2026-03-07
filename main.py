@@ -45,7 +45,10 @@ def init_db():
         pc_id INTEGER, pin TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, app_name TEXT,
-        started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT)""")
+        started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT, pc_id INTEGER)""")
+    # Add pc_id column if it doesn't exist yet
+    try: c.execute("ALTER TABLE sessions ADD COLUMN pc_id INTEGER")
+    except: pass
     c.execute("""CREATE TABLE IF NOT EXISTS schedules (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, label TEXT, days TEXT,
         block_from TEXT, block_until TEXT, is_active INTEGER DEFAULT 1)""")
@@ -80,6 +83,7 @@ class PCRegister(BaseModel):
 
 class SessionReport(BaseModel):
     kid_id: int; app_name: str; started_at: str; ended_at: str; duration_minutes: int
+    pc_id: Optional[int] = None
 
 class ScheduleCreate(BaseModel):
     kid_id: int; label: str; days: list[str]
@@ -154,6 +158,16 @@ def pc_offline(token: str, key=Depends(verify_key)):
 def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
     kid_id = body.get("kid_id")
     conn = get_db(); c = conn.cursor()
+    if kid_id:
+        # Find any other PC where this kid is currently active — force logout
+        cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+        c.execute("SELECT id FROM pcs WHERE active_kid_id=%s AND token!=%s AND last_seen > %s", (kid_id, token, cutoff))
+        other_pcs = [row[0] for row in c.fetchall()]
+        for pc_id in other_pcs:
+            # Insert a logout command for the other PC
+            c.execute("DELETE FROM commands WHERE kid_id=%s AND status='pending'", (kid_id,))
+            c.execute("INSERT INTO commands (kid_id, command, status) VALUES (%s,'logout','pending')", (kid_id,))
+            c.execute("UPDATE pcs SET active_kid_id=NULL WHERE id=%s", (pc_id,))
     c.execute("UPDATE pcs SET active_kid_id=%s, last_seen=%s WHERE token=%s",
               (kid_id, datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close(); return {"ok": True}
@@ -248,8 +262,8 @@ def mark_command_done(cmd_id: int, key=Depends(verify_key)):
 def report_session(data: SessionReport, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     session_date = data.started_at[:10] if data.started_at else date.today().isoformat()
-    c.execute("INSERT INTO sessions (kid_id, app_name, started_at, ended_at, duration_minutes, date) VALUES (%s,%s,%s,%s,%s,%s)",
-              (data.kid_id, data.app_name, data.started_at, data.ended_at, data.duration_minutes, session_date))
+    c.execute("INSERT INTO sessions (kid_id, app_name, started_at, ended_at, duration_minutes, date, pc_id) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+              (data.kid_id, data.app_name, data.started_at, data.ended_at, data.duration_minutes, session_date, data.pc_id))
     # Return total usage today so PC can check limit
     c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s",
               (data.kid_id, session_date))
@@ -287,7 +301,10 @@ def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
 @app.get("/api/usage/{kid_id}")
 def get_usage(kid_id: int, days: int = 7, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT date, app_name, SUM(duration_minutes) as total FROM sessions WHERE kid_id=%s GROUP BY date, app_name ORDER BY date DESC LIMIT %s",
+    c.execute("""SELECT s.date, s.app_name, SUM(s.duration_minutes) as total, s.pc_id, p.nickname as pc_name
+                 FROM sessions s LEFT JOIN pcs p ON s.pc_id = p.id
+                 WHERE s.kid_id=%s GROUP BY s.date, s.app_name, s.pc_id, p.nickname
+                 ORDER BY s.date DESC LIMIT %s""",
               (kid_id, days * 20))
     result = rows_to_dicts(c.fetchall(), c); conn.close(); return result
 
