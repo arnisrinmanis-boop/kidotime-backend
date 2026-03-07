@@ -163,17 +163,18 @@ def get_kids(key=Depends(verify_key)):
     kids = rows_to_dicts(c.fetchall(), c)
     result = []
     from datetime import datetime, timedelta
-    cutoff = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
-    c.execute("SELECT active_kid_id FROM pcs WHERE active_kid_id IS NOT NULL AND last_seen > %s", (cutoff,))
-    active_ids = {row[0] for row in c.fetchall()}
+    cutoff = (datetime.utcnow() - timedelta(seconds=60)).isoformat()
+    c.execute("SELECT active_kid_id, nickname FROM pcs WHERE active_kid_id IS NOT NULL AND last_seen > %s", (cutoff,))
+    active_pcs = {row[0]: row[1] for row in c.fetchall()}
+    active_ids = set(active_pcs.keys())
     for kid in kids:
         c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s", (kid["id"], today))
         usage = c.fetchone()[0]
-        # Get today's limit from weekly limits if set, otherwise use default
         c.execute(f"SELECT {day_col} FROM weekly_limits WHERE kid_id=%s", (kid["id"],))
         wl_row = c.fetchone()
         effective_limit = wl_row[0] if wl_row and wl_row[0] is not None else kid["daily_limit_minutes"]
-        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": kid["id"] in active_ids})
+        active_pc_name = active_pcs.get(kid["id"])
+        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": kid["id"] in active_ids, "active_pc_name": active_pc_name})
     conn.close(); return result
 
 @app.post("/api/kids")
