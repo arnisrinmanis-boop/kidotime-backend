@@ -329,6 +329,20 @@ def debug_pcs(key=Depends(verify_key)):
     conn.close()
     return {"now_utc": now.isoformat(), "cutoff": cutoff, "pcs": rows}
 
+@app.post("/api/admin/reset-weekly-limits")
+def reset_weekly_limits(key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE weekly_limits SET mon=30,tue=30,wed=30,thu=30,fri=30,sat=30,sun=30")
+    conn.commit(); conn.close()
+    return {"ok": True, "message": "All weekly limits reset to 30 min"}
+
+@app.post("/api/admin/reset-weekly-limits")
+def reset_weekly_limits(key=Depends(verify_key)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE weekly_limits SET mon=30,tue=30,wed=30,thu=30,fri=30,sat=30,sun=30")
+    conn.commit(); conn.close()
+    return {"ok": True, "message": "All weekly limits reset to 30 min"}
+
 @app.get("/")
 def health():
     return {"status": "KidoTime API v2 ✅", "version": "2.0.0"}
