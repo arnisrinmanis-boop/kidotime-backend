@@ -158,6 +158,7 @@ def set_active_kid(token: str, body: dict, key=Depends(verify_key)):
 def get_kids(key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     today = date.today().isoformat()
+    day_col = ['mon','tue','wed','thu','fri','sat','sun'][date.today().weekday()]
     c.execute("SELECT * FROM kids")
     kids = rows_to_dicts(c.fetchall(), c)
     result = []
@@ -168,7 +169,11 @@ def get_kids(key=Depends(verify_key)):
     for kid in kids:
         c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s", (kid["id"], today))
         usage = c.fetchone()[0]
-        result.append({**kid, "usage_today_minutes": usage, "limit_reached": usage >= kid["daily_limit_minutes"], "active": kid["id"] in active_ids})
+        # Get today's limit from weekly limits if set, otherwise use default
+        c.execute(f"SELECT {day_col} FROM weekly_limits WHERE kid_id=%s", (kid["id"],))
+        wl_row = c.fetchone()
+        effective_limit = wl_row[0] if wl_row and wl_row[0] is not None else kid["daily_limit_minutes"]
+        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": kid["id"] in active_ids})
     conn.close(); return result
 
 @app.post("/api/kids")
