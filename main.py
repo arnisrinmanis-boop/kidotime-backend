@@ -136,6 +136,10 @@ def check_registration(token: str, key=Depends(verify_key)):
 @app.post("/api/pcs/{token}/heartbeat")
 def pc_heartbeat(token: str, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
+    c.execute("SELECT id FROM pcs WHERE token=%s", (token,))
+    row = c.fetchone()
+    if not row:
+        conn.close(); return {"ok": False, "reason": "not_registered"}
     c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.utcnow().isoformat(), token))
     conn.commit(); conn.close(); return {"ok": True}
 
