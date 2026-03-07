@@ -207,6 +207,8 @@ def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
     locked = body.get("locked", True)
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE kids SET is_locked=%s WHERE id=%s", (1 if locked else 0, kid_id))
+    # Clear all pending commands first to avoid stale lock/unlock flicker
+    c.execute("DELETE FROM commands WHERE kid_id=%s AND status='pending'", (kid_id,))
     if locked:
         c.execute("INSERT INTO commands (kid_id, command, payload, status) VALUES (%s,'lock','{}','pending')", (kid_id,))
     else:
