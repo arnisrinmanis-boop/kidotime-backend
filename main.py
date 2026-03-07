@@ -240,7 +240,12 @@ def report_session(data: SessionReport, key=Depends(verify_key)):
     session_date = data.started_at[:10] if data.started_at else date.today().isoformat()
     c.execute("INSERT INTO sessions (kid_id, app_name, started_at, ended_at, duration_minutes, date) VALUES (%s,%s,%s,%s,%s,%s)",
               (data.kid_id, data.app_name, data.started_at, data.ended_at, data.duration_minutes, session_date))
-    conn.commit(); conn.close(); return {"ok": True}
+    # Return total usage today so PC can check limit
+    c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s",
+              (data.kid_id, session_date))
+    total_today = c.fetchone()[0]
+    conn.commit(); conn.close()
+    return {"ok": True, "total_today": total_today}
 
 @app.get("/api/weekly-limits/{kid_id}")
 def get_weekly_limits(kid_id: int, key=Depends(verify_key)):
