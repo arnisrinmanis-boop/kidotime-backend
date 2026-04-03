@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
 """
 KidoTime Backend API v2
 PostgreSQL version — data persists across Railway restarts
@@ -36,8 +34,6 @@ def rows_to_dicts(rows, cursor):
 
 def init_db():
     conn = get_db(); c = conn.cursor()
-
-    # Create all tables — IF NOT EXISTS makes these safe to run on any DB state
     c.execute("""CREATE TABLE IF NOT EXISTS pcs (
         id SERIAL PRIMARY KEY, nickname TEXT NOT NULL,
         token TEXT UNIQUE NOT NULL, registered INTEGER DEFAULT 0,
@@ -49,15 +45,25 @@ def init_db():
         pc_id INTEGER, pin TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, app_name TEXT,
-        started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0,
-        date TEXT, pc_id INTEGER)""")
+        started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT, pc_id INTEGER)""")
+    try:
+        c.execute("ALTER TABLE sessions ADD COLUMN pc_id INTEGER")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    except Exception:
+        conn.rollback()
     c.execute("""CREATE TABLE IF NOT EXISTS schedules (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, label TEXT, days TEXT,
         block_from TEXT, block_until TEXT, is_active INTEGER DEFAULT 1)""")
     c.execute("""CREATE TABLE IF NOT EXISTS commands (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, command TEXT NOT NULL,
-        payload TEXT, status TEXT DEFAULT 'pending',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        payload TEXT, status TEXT DEFAULT 'pending', created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+    try:
+        c.execute("ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
     c.execute(
         "CREATE TABLE IF NOT EXISTS weekly_limits ("
         "id SERIAL PRIMARY KEY, kid_id INTEGER UNIQUE, "
@@ -68,23 +74,7 @@ def init_db():
     )
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY, value TEXT)""")
-    conn.commit()  # Commit all table creations before any ALTER TABLE
-
-    # Each ALTER TABLE runs in its own transaction — a failure on one
-    # (e.g. column already exists) never aborts the others
-    for sql in [
-        "ALTER TABLE sessions ADD COLUMN pc_id INTEGER",
-        "ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL",
-        "ALTER TABLE kids ADD COLUMN extra_date TEXT",
-        "ALTER TABLE kids ADD COLUMN extra_minutes INTEGER DEFAULT 0",
-    ]:
-        try:
-            c.execute(sql)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-
-    conn.close()
+    conn.commit(); conn.close()
 
 init_db()
 
@@ -215,17 +205,9 @@ def get_kids(key=Depends(verify_key)):
         usage = c.fetchone()[0]
         c.execute(f"SELECT {day_col} FROM weekly_limits WHERE kid_id=%s", (kid["id"],))
         wl_row = c.fetchone()
-        base_limit = wl_row[0] if wl_row and wl_row[0] is not None else (kid["daily_limit_minutes"] or 120)
-        # Extra time only counts if it was set today
-        extra = (kid.get("extra_minutes") or 0) if kid.get("extra_date") == today else 0
-        effective_limit = base_limit + extra
+        effective_limit = wl_row[0] if wl_row and wl_row[0] is not None else (kid["daily_limit_minutes"] or 120)
         active_pc_name = active_pcs.get(kid["id"])
-        result.append({**kid, "usage_today_minutes": usage,
-                        "weekly_limit_today": base_limit,
-                        "extra_today": extra,
-                        "effective_limit_today": effective_limit,
-                        "limit_reached": usage >= effective_limit,
-                        "active": bool(kid["id"] in active_ids), "active_pc_name": active_pc_name})
+        result.append({**kid, "usage_today_minutes": usage, "effective_limit_today": effective_limit, "limit_reached": usage >= effective_limit, "active": bool(kid["id"] in active_ids), "active_pc_name": active_pc_name})
     conn.close(); return result
 
 @app.post("/api/kids")
@@ -262,23 +244,6 @@ def set_kid_pin(kid_id: int, body: dict, key=Depends(verify_key)):
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE kids SET pin=%s WHERE id=%s", (pin, kid_id))
     conn.commit(); conn.close(); return {"ok": True}
-
-@app.post("/api/kids/{kid_id}/extra-time")
-def add_extra_time(kid_id: int, body: dict, key=Depends(verify_key)):
-    minutes = int(body.get("minutes", 0))
-    conn = get_db(); c = conn.cursor()
-    today_str = date.today().isoformat()
-    c.execute("SELECT extra_date, extra_minutes FROM kids WHERE id=%s", (kid_id,))
-    row = c.fetchone()
-    if not row: conn.close(); raise HTTPException(404, "Kid not found")
-    extra_date, current_extra = row
-    # Reset if it's a new day
-    if extra_date != today_str:
-        current_extra = 0
-    new_extra = max(0, (current_extra or 0) + minutes)
-    c.execute("UPDATE kids SET extra_date=%s, extra_minutes=%s WHERE id=%s", (today_str, new_extra, kid_id))
-    conn.commit(); conn.close()
-    return {"ok": True, "extra_minutes": new_extra}
 
 @app.post("/api/kids/{kid_id}/lock")
 def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
