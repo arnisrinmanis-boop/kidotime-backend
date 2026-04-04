@@ -33,7 +33,9 @@ def rows_to_dicts(rows, cursor):
     return [dict(zip(cols, row)) for row in rows]
 
 def init_db():
-    conn = get_db(); c = conn.cursor()
+    conn = get_db()
+    c = conn.cursor()
+
     c.execute("""CREATE TABLE IF NOT EXISTS pcs (
         id SERIAL PRIMARY KEY, nickname TEXT NOT NULL,
         token TEXT UNIQUE NOT NULL, registered INTEGER DEFAULT 0,
@@ -46,31 +48,36 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, app_name TEXT,
         started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT, pc_id INTEGER)""")
-    # Add pc_id column if it doesn't exist yet
-    try: c.execute("ALTER TABLE sessions ADD COLUMN pc_id INTEGER")
-    except: pass
     c.execute("""CREATE TABLE IF NOT EXISTS schedules (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, label TEXT, days TEXT,
         block_from TEXT, block_until TEXT, is_active INTEGER DEFAULT 1)""")
     c.execute("""CREATE TABLE IF NOT EXISTS commands (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, command TEXT NOT NULL,
         payload TEXT, status TEXT DEFAULT 'pending', created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
-    try:
-        c.execute("ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL")
-        conn.commit()
-    except Exception:
-        conn.rollback()
-    c.execute(
-        "CREATE TABLE IF NOT EXISTS weekly_limits ("
-        "id SERIAL PRIMARY KEY, kid_id INTEGER UNIQUE, "
-        "mon INTEGER DEFAULT 120, tue INTEGER DEFAULT 120, "
-        "wed INTEGER DEFAULT 120, thu INTEGER DEFAULT 120, "
-        "fri INTEGER DEFAULT 120, sat INTEGER DEFAULT 180, "
-        "sun INTEGER DEFAULT 180)"
-    )
+    c.execute("""CREATE TABLE IF NOT EXISTS weekly_limits (
+        id SERIAL PRIMARY KEY, kid_id INTEGER UNIQUE,
+        mon INTEGER DEFAULT 120, tue INTEGER DEFAULT 120,
+        wed INTEGER DEFAULT 120, thu INTEGER DEFAULT 120,
+        fri INTEGER DEFAULT 120, sat INTEGER DEFAULT 180,
+        sun INTEGER DEFAULT 180)""")
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY, value TEXT)""")
-    conn.commit(); conn.close()
+
+    conn.commit()
+
+    # Safe ALTER TABLE migrations — each in its own transaction
+    migrations = [
+        "ALTER TABLE sessions ADD COLUMN pc_id INTEGER",
+        "ALTER TABLE pcs ADD COLUMN active_kid_id INTEGER DEFAULT NULL",
+    ]
+    for sql in migrations:
+        try:
+            c.execute(sql)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+    conn.close()
 
 init_db()
 
@@ -145,7 +152,6 @@ def pc_heartbeat(token: str, key=Depends(verify_key)):
     row = c.fetchone()
     if not row:
         conn.close(); return {"ok": False, "reason": "not_registered"}
-    # Only update last_seen for registered PCs
     if row[1]:
         c.execute("UPDATE pcs SET last_seen=%s WHERE token=%s", (datetime.utcnow().isoformat(), token))
         conn.commit()
@@ -212,7 +218,6 @@ def create_kid(data: KidCreate, key=Depends(verify_key)):
     c.execute("INSERT INTO kids (name, daily_limit_minutes, pc_id) VALUES (%s,%s,%s) RETURNING id",
               (data.name, data.daily_limit_minutes, data.pc_id))
     kid_id = c.fetchone()[0]
-    # Auto-create WTL with same value as daily limit
     lim = data.daily_limit_minutes or 120
     c.execute("INSERT INTO weekly_limits (kid_id,mon,tue,wed,thu,fri,sat,sun) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
               (kid_id, lim, lim, lim, lim, lim, lim, lim))
@@ -246,7 +251,6 @@ def lock_kid(kid_id: int, body: dict, key=Depends(verify_key)):
     locked = body.get("locked", True)
     conn = get_db(); c = conn.cursor()
     c.execute("UPDATE kids SET is_locked=%s WHERE id=%s", (1 if locked else 0, kid_id))
-    # Clear all pending commands first to avoid stale lock/unlock flicker
     c.execute("DELETE FROM commands WHERE kid_id=%s AND status='pending'", (kid_id,))
     if locked:
         c.execute("INSERT INTO commands (kid_id, command, payload, status) VALUES (%s,'lock','{}','pending')", (kid_id,))
@@ -279,7 +283,6 @@ def report_session(data: SessionReport, key=Depends(verify_key)):
     session_date = data.started_at[:10] if data.started_at else date.today().isoformat()
     c.execute("INSERT INTO sessions (kid_id, app_name, started_at, ended_at, duration_minutes, date) VALUES (%s,%s,%s,%s,%s,%s)",
               (data.kid_id, data.app_name, data.started_at, data.ended_at, data.duration_minutes, session_date))
-    # Return total usage today so PC can check limit
     c.execute("SELECT COALESCE(SUM(duration_minutes),0) FROM sessions WHERE kid_id=%s AND date=%s",
               (data.kid_id, session_date))
     total_today = c.fetchone()[0]
@@ -303,7 +306,6 @@ def set_weekly_limits(kid_id: int, body: dict, key=Depends(verify_key)):
     c.execute("SELECT mon,tue,wed,thu,fri,sat,sun FROM weekly_limits WHERE kid_id=%s", (kid_id,))
     existing = c.fetchone()
     if existing:
-        # Merge: only update days that are in body, keep existing for others
         vals = [body[d] if d in body else existing[i] for i, d in enumerate(days)]
         c.execute("UPDATE weekly_limits SET mon=%s,tue=%s,wed=%s,thu=%s,fri=%s,sat=%s,sun=%s WHERE kid_id=%s",
                   (*vals, kid_id))
@@ -357,13 +359,6 @@ def debug_pcs(key=Depends(verify_key)):
     cutoff = (now - timedelta(seconds=60)).isoformat()
     conn.close()
     return {"now_utc": now.isoformat(), "cutoff": cutoff, "pcs": rows}
-
-@app.post("/api/admin/reset-weekly-limits")
-def reset_weekly_limits(key=Depends(verify_key)):
-    conn = get_db(); c = conn.cursor()
-    c.execute("UPDATE weekly_limits SET mon=30,tue=30,wed=30,thu=30,fri=30,sat=30,sun=30")
-    conn.commit(); conn.close()
-    return {"ok": True, "message": "All weekly limits reset to 30 min"}
 
 @app.post("/api/admin/reset-weekly-limits")
 def reset_weekly_limits(key=Depends(verify_key)):
