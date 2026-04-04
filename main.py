@@ -46,13 +46,9 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS sessions (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, app_name TEXT,
         started_at TEXT, ended_at TEXT, duration_minutes INTEGER DEFAULT 0, date TEXT, pc_id INTEGER)""")
-    try:
-        c.execute("ALTER TABLE sessions ADD COLUMN pc_id INTEGER")
-        conn.commit()
-    except Exception:
-        conn.rollback()
-    except Exception:
-        conn.rollback()
+    # Add pc_id column if it doesn't exist yet
+    try: c.execute("ALTER TABLE sessions ADD COLUMN pc_id INTEGER")
+    except: pass
     c.execute("""CREATE TABLE IF NOT EXISTS schedules (
         id SERIAL PRIMARY KEY, kid_id INTEGER NOT NULL, label TEXT, days TEXT,
         block_from TEXT, block_until TEXT, is_active INTEGER DEFAULT 1)""")
